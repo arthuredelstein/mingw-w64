@@ -167,10 +167,9 @@ extern PIMAGE_SECTION_HEADER __mingw_GetSectionForAddress (LPVOID p);
 extern PBYTE _GetPEImageBase (void);
 
 typedef struct sSecInfo {
-  /* Keeps altered section flags, or zero if nothing was changed.  */
-  DWORD old_protect;
   PBYTE sec_start;
   PIMAGE_SECTION_HEADER hash;
+  MEMORY_BASIC_INFORMATION originalMemoryBasicInfo;
 } sSecInfo;
 
 static sSecInfo *the_secs = NULL;
@@ -179,7 +178,6 @@ static int maxSections = 0;
 static void
 mark_section_writable (LPVOID addr)
 {
-  MEMORY_BASIC_INFORMATION b;
   PIMAGE_SECTION_HEADER h;
   int i;
 
@@ -196,23 +194,25 @@ mark_section_writable (LPVOID addr)
       return;
     }
   the_secs[i].hash = h;
-  the_secs[i].old_protect = 0;
   the_secs[i].sec_start = _GetPEImageBase () + h->VirtualAddress;
 
-  if (!VirtualQuery (the_secs[i].sec_start, &b, sizeof(b)))
+  if (!VirtualQuery (the_secs[i].sec_start,
+                     &(the_secs[i].originalMemoryBasicInfo),
+                     sizeof(MEMORY_BASIC_INFORMATION)))
     {
       __report_error ("  VirtualQuery failed for %d bytes at address %p",
 		      (int) h->Misc.VirtualSize, the_secs[i].sec_start);
       return;
     }
 
-  if (b.Protect != PAGE_EXECUTE_READWRITE && b.Protect != PAGE_READWRITE
-      && b.Protect != PAGE_EXECUTE_WRITECOPY && b.Protect != PAGE_WRITECOPY)
+  MEMORY_BASIC_INFORMATION b = the_secs[i].originalMemoryBasicInfo;
+  DWORD oldprot;
+  if (b.Protect & (PAGE_EXECUTE_READWRITE | PAGE_READWRITE |
+                   PAGE_EXECUTE_WRITECOPY | PAGE_WRITECOPY))
     {
       printf ("mark_section_writable: attempt VirtualProtect %p to RWX\n", b.BaseAddress);
       if (!VirtualProtect (b.BaseAddress, b.RegionSize,
-			   PAGE_EXECUTE_READWRITE,
-			   &the_secs[i].old_protect))
+                           PAGE_EXECUTE_READWRITE, &oldprot))
 	__report_error ("  VirtualProtect failed with code 0x%x",
 	  (int) GetLastError ());
     }
@@ -224,23 +224,17 @@ static void
 restore_modified_sections (void)
 {
   int i;
-  MEMORY_BASIC_INFORMATION b;
   DWORD oldprot;
 
   for (i = 0; i < maxSections; i++)
     {
-      if (the_secs[i].old_protect == 0)
+      MEMORY_BASIC_INFORMATION b;
+      b = the_secs[i].originalMemoryBasicInfo;
+      if (b.Protect & (PAGE_EXECUTE_READWRITE | PAGE_READWRITE |
+                       PAGE_EXECUTE_WRITECOPY | PAGE_WRITECOPY))
         continue;
-      if (!VirtualQuery (the_secs[i].sec_start, &b, sizeof(b)))
-	{
-	  __report_error ("  VirtualQuery failed for %d bytes at address %p",
-			  (int) the_secs[i].hash->Misc.VirtualSize,
-			  the_secs[i].sec_start);
-	  return;
-	}
       printf ("restore_modified_sections: attempt VirtualProtect %p\n", b.BaseAddress);
-      VirtualProtect (b.BaseAddress, b.RegionSize, the_secs[i].old_protect,
-		      &oldprot);
+      VirtualProtect (b.BaseAddress, b.RegionSize, b.Protect, &oldprot);
     }
 }
 
