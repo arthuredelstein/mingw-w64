@@ -209,6 +209,7 @@ mark_section_writable (LPVOID addr)
   if (b.Protect != PAGE_EXECUTE_READWRITE && b.Protect != PAGE_READWRITE
       && b.Protect != PAGE_EXECUTE_WRITECOPY && b.Protect != PAGE_WRITECOPY)
     {
+      printf ("mark_section_writable: attempt VirtualProtect %p to RWX\n", b.BaseAddress);
       if (!VirtualProtect (b.BaseAddress, b.RegionSize,
 			   PAGE_EXECUTE_READWRITE,
 			   &the_secs[i].old_protect))
@@ -237,6 +238,7 @@ restore_modified_sections (void)
 			  the_secs[i].sec_start);
 	  return;
 	}
+      printf ("restore_modified_sections: attempt VirtualProtect %p\n", b.BaseAddress);
       VirtualProtect (b.BaseAddress, b.RegionSize, the_secs[i].old_protect,
 		      &oldprot);
     }
@@ -283,6 +285,7 @@ __write_memory (void *addr, const void *src, size_t len)
       && b.Protect != PAGE_WRITECOPY && b.Protect != PAGE_EXECUTE_WRITECOPY)
     {
       call_unprotect = 1;
+      printf ("__write_memory: attempt VirtualProtect %p to RWX\n", b.BaseAddress);
       VirtualProtect (b.BaseAddress, b.RegionSize, PAGE_EXECUTE_READWRITE,
 		      &oldprot);
     }
@@ -296,6 +299,7 @@ __write_memory (void *addr, const void *src, size_t len)
   if (call_unprotect
       && b.Protect != PAGE_EXECUTE_READWRITE && b.Protect != PAGE_READWRITE
       && b.Protect != PAGE_WRITECOPY && b.Protect != PAGE_EXECUTE_WRITECOPY)
+    printf ("__write_memory: restore attempt VirtualProtect %p\n", b.BaseAddress);
     VirtualProtect (b.BaseAddress, b.RegionSize, oldprot, &oldprot);
 #endif
 }
