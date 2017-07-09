@@ -169,6 +169,8 @@ extern PBYTE _GetPEImageBase (void);
 typedef struct sSecInfo {
   /* Keeps altered section flags, or zero if nothing was changed.  */
   DWORD old_protect;
+  PVOID base_address;
+  SIZE_T region_size;
   PBYTE sec_start;
   PIMAGE_SECTION_HEADER hash;
 } sSecInfo;
@@ -209,7 +211,9 @@ mark_section_writable (LPVOID addr)
   if (b.Protect != PAGE_EXECUTE_READWRITE && b.Protect != PAGE_READWRITE
       && b.Protect != PAGE_EXECUTE_WRITECOPY && b.Protect != PAGE_WRITECOPY)
     {
-      printf ("mark_section_writable: attempt VirtualProtect %p to RWX\n", b.BaseAddress);
+      printf ("mark_section_writable: attempt VirtualProtect %p to RWX\n", the_secs[i].base_address);
+      the_secs[i].base_address = b.BaseAddress;
+      the_secs[i].region_size = b.RegionSize;
       if (!VirtualProtect (b.BaseAddress, b.RegionSize,
 			   PAGE_EXECUTE_READWRITE,
 			   &the_secs[i].old_protect))
@@ -231,16 +235,9 @@ restore_modified_sections (void)
     {
       if (the_secs[i].old_protect == 0)
         continue;
-      if (!VirtualQuery (the_secs[i].sec_start, &b, sizeof(b)))
-	{
-	  __report_error ("  VirtualQuery failed for %d bytes at address %p",
-			  (int) the_secs[i].hash->Misc.VirtualSize,
-			  the_secs[i].sec_start);
-	  return;
-	}
-      printf ("restore_modified_sections: attempt VirtualProtect %p\n", b.BaseAddress);
-      VirtualProtect (b.BaseAddress, b.RegionSize, the_secs[i].old_protect,
-		      &oldprot);
+      printf ("restore_modified_sections: attempt VirtualProtect %p\n", the_secs[i].base_address);
+      VirtualProtect (the_secs[i].base_address, the_secs[i].region_size,
+                      the_secs[i].old_protect, &oldprot);
     }
 }
 
